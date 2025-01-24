@@ -58,7 +58,6 @@ services:
         hostname: overseerr
         networks:
             - mediarr
-            - public_caddy
         environment:
             - LOG_LEVEL=debug
             - PUID=1000
@@ -186,9 +185,6 @@ services:
 networks:
     mediarr:
         driver: bridge
-    public_caddy:
-        driver: bridge
-        external: true
 
 volumes:
     myMedia:
