@@ -1,0 +1,217 @@
+services:
+    plex:
+        image: ${USE_AMD_PLEX_IMAGE:-lscr.io/linuxserver/plex:latest}
+        container_name: plex
+        hostname: plex
+        networks:
+            - mediarr
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - VERSION=docker
+            - TZ=Europe/Istanbul
+            - PLEX_CLAIM=${PLEX_CLAIM}
+        volumes:
+            - ./configs/plex/etc:/config
+            - myTvMedia:/tv
+            - myMovieMedia:/movies
+        ports:
+            # Default access
+            - target: 32400
+              published: 32400
+              mode: host
+
+            # Plex DLNA Server
+            - 1900:1900/udp
+            - 32469:32469
+
+            # Plex Home Theater control
+            - 8324:8324
+
+            # GDM discovery
+            - 32410:32410/udp
+            - 32412:32412/udp
+            - 32413:32413/udp
+            - 32414:32414/udp
+        devices:
+            - /dev/dri:/dev/dri
+        restart: unless-stopped
+    tautulli:
+        image: ghcr.io/tautulli/tautulli
+        container_name: tautulli
+        hostname: tautulli
+        networks:
+            - mediarr
+            - public_caddy
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=Europe/Istanbul
+        restart: unless-stopped
+        volumes:
+            - ./configs/mediarr/tautulli:/config
+        ports:
+            - 8181:8181
+    overseerr:
+        image: sctx/overseerr:latest
+        container_name: overseerr
+        hostname: overseerr
+        networks:
+            - mediarr
+            - public_caddy
+        environment:
+            - LOG_LEVEL=debug
+            - PUID=1000
+            - PGID=1000
+            - TZ=Europe/Istanbul
+            - PORT=5055
+        volumes:
+            - ./configs/mediarr/overseerr:/app/config
+        ports:
+            - 5055:5055
+        restart: unless-stopped
+    bazarr:
+        image: lscr.io/linuxserver/bazarr:latest
+        container_name: bazarr
+        hostname: bazarr
+        networks:
+            - mediarr
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=Europe/Istanbul
+        volumes:
+            - ./configs/mediarr/bazarr:/config
+            - myMedia:/mnt/media
+        ports:
+            - 6767:6767
+        restart: unless-stopped
+        depends_on:
+            - sonarr
+            - radarr
+    prowlarr:
+        image: linuxserver/prowlarr:latest
+        container_name: prowlarr
+        hostname: prowlarr
+        networks:
+            - mediarr
+        environment:
+            - PUID=1000
+            - PGID=1000
+            - TZ=Europe/Istanbul
+        volumes:
+            - ./configs/mediarr/prowlarr:/config
+        ports:
+            - 9696:9696
+        restart: unless-stopped
+        depends_on:
+            - flaresolverr
+    flaresolverr:
+        image: ghcr.io/flaresolverr/flaresolverr:latest
+        container_name: flaresolverr
+        hostname: flaresolverr
+        networks:
+            - mediarr
+        environment:
+            - LOG_LEVEL=${LOG_LEVEL:-info}
+            - LOG_HTML=${LOG_HTML:-false}
+            - CAPTCHA_SOLVER=${CAPTCHA_SOLVER:-none}
+            - TZ=Europe/Istanbul
+        restart: unless-stopped
+    qbittorrent:
+        image: lscr.io/linuxserver/qbittorrent:latest
+        container_name: qbittorrent
+        hostname: qbittorrent
+        networks:
+            - mediarr
+        environment:
+            - PUID=1000
+            - PGID=100
+            - TZ=Europe/Istanbul
+            - WEBUI_PORT=8080
+        volumes:
+            - ./configs/mediarr/qbittorrent:/config
+            - myDlFolders:/mnt/downloads
+        ports:
+            - 8080:8080
+            - 6881:6881
+            - 6881:6881/udp
+        restart: unless-stopped
+    radarr:
+        image: lscr.io/linuxserver/radarr:latest
+        container_name: radarr
+        hostname: radarr
+        networks:
+            - mediarr
+        environment:
+            - PUID=1000
+            - PGID=100
+            - TZ=Europe/Istanbul
+        volumes:
+            - ./configs/mediarr/radarr:/config
+            - myMovieMedia:/mnt/media
+            - myDlFolders:/mnt/downloads
+        ports:
+            - 7878:7878
+        restart: unless-stopped
+        depends_on:
+            - prowlarr
+            - qbittorrent
+    sonarr:
+        image: lscr.io/linuxserver/sonarr:latest
+        container_name: sonarr
+        hostname: sonarr
+        networks:
+            - mediarr
+        environment:
+            - PUID=1000
+            - PGID=100
+            - TZ=Europe/Istanbul
+        volumes:
+            - ./configs/mediarr/sonarr:/config
+            - myTvMedia:/mnt/media
+            - myDlFolders:/mnt/downloads
+        depends_on:
+            - prowlarr
+            - qbittorrent
+        ports:
+            - 8989:8989
+        restart: unless-stopped
+    watchtower:
+        image: containrrr/watchtower
+        container_name: watchtower
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+        restart: unless-stopped
+networks:
+    mediarr:
+        driver: bridge
+    public_caddy:
+        driver: bridge
+        external: true
+
+volumes:
+    myMedia:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${PLEX_MEDIA_FOLDER}
+    myMovieMedia:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${PLEX_MEDIA_FOLDER}/Movies
+    myTvMedia:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${PLEX_MEDIA_FOLDER}/TvShows
+    myDlFolders:
+        driver: local
+        driver_opts:
+            type: none
+            o: bind
+            device: ${DOWNLOAD_FOLDER}
